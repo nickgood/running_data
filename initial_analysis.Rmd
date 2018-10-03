@@ -1,0 +1,204 @@
+---
+title: "Load and model running data"
+author: "Nicholas Good"
+output:
+  html_document:
+    theme: paper
+---
+
+```{r global_options, include = FALSE}
+  knitr::opts_chunk$set(fig.path = 'figures/',
+                        warning = FALSE,
+                        message = FALSE,
+                        fig.width = 6, fig.height = 4,
+                        cache = FALSE,
+                        echo = TRUE)
+```
+
+---
+
+* create a new RMarkdown document for these exercises
+* make sure you have a folder with the data for the exercise
+
+## Using functions to load data
+
+- write a function to load one of the running .csv files (note: you'll need the `readr` package)
+- set the function load the all columns as class - character.
+
+Example code:
+
+```{r}
+library(readr)
+
+read_run_file <- function(file_name){
+  read_csv(file_name, col_types = cols(.default = "c"))
+}
+```
+
+- create a vector of the .csv files in the running folder
+- load one of the running files using your load function
+
+Example code:
+
+```{r}
+files <- list.files("data/running", ".csv$", full.names = TRUE)
+
+run_file <- read_run_file(files[1])
+```
+
+- take a look at the file you just loaded
+- write a function to tidy the column names
+- update your file loading function to (1) clean the column names, (2) filter only rows that contain data for complete miles, (3) convert the time strings to `hms` class using `lubridate`, (4) convert the remaining character columns to numeric class, (5) add a column containing the file name.
+- reload a data file using the updated function
+
+Example code:
+
+```{r, include=FALSE}
+clean_names <- function(x){gsub(" ", "_", tolower(x))}
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(lubridate)
+library(dplyr)
+
+read_run_file <- function(file){
+  read_csv(file, col_types = cols(.default = "c")) %>%
+  rename_all(clean_names) %>%
+  filter(distance == "1" & split != "Summary") %>%
+  mutate_at(vars(matches("time|pace")), hms) %>%
+  mutate_if(is.character, as.numeric) %>%
+  mutate(file_name = sub(".csv", "", basename(file)))
+  
+}
+
+tail(read_run_file(files[1]), 3)
+```
+
+- load all the .csv files from the running folder into a list using `map()` from the `purrr` package.
+- how many files were loaded?
+
+Example code:
+
+```{r, warning=FALSE}
+library(purrr)
+
+all_files <- map(files, read_run_file)
+
+class(all_files)
+```
+
+```{r}
+length(all_files)
+```
+
+## Predicting running times
+
+build a model to predict how long it will take to run this [50 mile race](http://humanpotentialrunning.com/wp-content/uploads/2018/03/Indian-Creek-Elevation-Profiles.pdf) using the running data set.
+
+- first write a function to summarise each training run. Think about what some useful summary statsitics might be. Be sure to include the total distance of each run, average pace, and the file name in your summary.
+
+Example code:
+
+```{r}
+run_sum <- function(x){
+  summarise(x, 
+            distance = sum(distance, na.rm = TRUE),
+            gain = sum(elevation_gain, na.rm = TRUE),
+            gain_per_mile = mean(elevation_gain, na.rm = TRUE),
+            loss_per_mile = mean(elev_loss, na.rm = TRUE),
+            loss = sum(elev_loss, na.rm = TRUE),
+            pace_mins = mean(as.numeric(avg_pace) / 60, na.rm = TRUE),
+            t_min = min(avg_temperature, na.rm = TRUE),
+            t_max = max(avg_temperature, na.rm = TRUE),
+            t_mean = mean(avg_temperature, na.rm = TRUE),
+            file_name = first(file_name))
+}
+```
+
+- Use `map_df()` to create a data frame summarizing each run.
+
+Example code:
+
+```{r}
+library(knitr)
+
+run_summary <- map_df(all_files, run_sum)
+
+class(run_summary)
+
+kable(tail(run_summary, 5), digits = 1)
+```
+
+- join the `run_summary` data frame with the elevation data file
+- create a new variable for the total time each run takes
+- remove the `file_name` column
+
+Example code:
+
+```{r}
+library(tidyr)
+
+run_data <- run_summary %>%
+            left_join(read_csv("data/elevation.csv", col_types = cols()), by = "file_name") %>%
+            mutate(duration = pace_mins * distance) %>%
+            select(-file_name)
+```
+
+- use the (http://mfp.imbi.uni-freiburg.de)[mfp] library to identify the best model to predict duration
+- the first argument the `mfp` function requires in a `formula` object. The formula should contain all the candidate variables.
+- take a look at the website link above to get an idea what the `mfp` function does.
+
+Example formula :
+
+```{r}
+eqn <- formula(duration ~ fp(distance) + fp(gain) + fp(loss) +
+                           fp(t_min)+ fp(t_max) + fp(t_mean) +
+                           fp(e_min) + fp(e_max) + fp(e_mean))
+```
+
+- use the `summary` function to display the output from `mfp`
+- use the `$` operator to extract the model formula from the `mfp` object.
+- use the model formula to fit a linear model to the running data
+- print a summary of the linear model
+
+Example `mfp` code:
+
+```{r}
+library(mfp)
+
+mfp_run <- mfp(eqn,
+               data = run_data,
+               select = 0.05)
+
+summary(mfp_run)
+
+run_mod <- lm(mfp_run$formula, run_data)
+
+summary(run_mod)
+```
+
+- you can use the `autoplot` function to check the model diagnostics
+
+```{r}
+library(ggfortify)
+
+autoplot(run_mod)
+```
+
+- use the model to predict the finishing times for my previous two [races](https://ultrasignup.com/results_participant.aspx?fname=Nicholas&lname=Good&age=35)
+- finally use the model to predict [next weekend's race](http://humanpotentialrunning.com/wp-content/uploads/2018/03/Indian-Creek-Elevation-Profiles.pdf) time
+- the race has an intermediate cut-off time at mile 34, will I make it?
+
+Example code:
+
+```{r imogene_pass}
+pre <- predict.lm(run_mod, data_frame(distance = 17.1, gain = 5420, loss = 4417, t_min = 50))
+```
+
+The predicted imogene pass run time was: `r round(seconds_to_period(pre*60), 0)`.
+
+```{r jelm_mountain}
+pre <- predict.lm(run_mod, data_frame(distance = 10.2, gain = 2000, loss = 2000, t_min = 55))
+```
+
+The predicted imogene pass run time was: `r round(seconds_to_period(pre*60), 0)`.
