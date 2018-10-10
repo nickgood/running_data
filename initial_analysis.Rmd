@@ -91,6 +91,22 @@ class(all_files)
 length(all_files)
 ```
 
+---
+
+## Exploratory analysis
+
+We can use exploratory analyses to come up with candidate explanatory variables for our model:
+
+### Descriptive plots
+
+```{r}
+run_desc <- run_summary %>%
+            mutate()
+
+```
+
+---
+
 ## Predicting running times
 
 build a model to predict how long it will take to run this [50 mile race](http://humanpotentialrunning.com/wp-content/uploads/2018/03/Indian-Creek-Elevation-Profiles.pdf) using the running data set.
