@@ -2,6 +2,7 @@
 title: "Load and model running data"
 author: "Nicholas Good"
 output:
+  pdf_document: default
   html_document:
     theme: paper
 ---
@@ -93,20 +94,6 @@ length(all_files)
 
 ---
 
-## Exploratory analysis
-
-We can use exploratory analyses to come up with candidate explanatory variables for our model:
-
-### Descriptive plots
-
-```{r}
-run_desc <- run_summary %>%
-            mutate()
-
-```
-
----
-
 ## Predicting running times
 
 build a model to predict how long it will take to run this [50 mile race](http://humanpotentialrunning.com/wp-content/uploads/2018/03/Indian-Creek-Elevation-Profiles.pdf) using the running data set.
@@ -160,8 +147,88 @@ run_data <- run_summary %>%
             select(-file_name)
 ```
 
+---
+
+## Exploratory analysis
+
+We can use exploratory analyses to come up with candidate explanatory variables for our model.
+
+### Adding new variables
+
+* For example we want to explore it temporal variables predict pace. First, we'll need to extract temperoal information from out `datetime` object:
+
+- add time date, day of week and month variables to the dataset.
+
+Example code:
+
+```{r}
+library(lubridate)
+run_desc <- run_data %>%
+            mutate(date = as.Date(datetime_start),
+                   dow = wday(datetime_start, label=TRUE),
+                   month = month(datetime_start, label=TRUE))
+```
+
+- now plot the time series of pace
+- color the plot by total distance
+- add a trend line (think about what type of line; linear? quadratic? smoothed?)
+- add a theme
+- add useful axis labels
+
+Example code:
+
+```{r fig_pace_distance}
+library(ggplot2)
+library(LaCroixColoR)
+
+ggplot(run_desc %>% mutate(distance = as.factor(distance)), aes(x = datetime_start, y = pace_mins, color = distance)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = lacroix_palette("PeachPear", n = 27, type = "continuous")) +
+  theme_bw() +
+  xlab("") + ylab("pace (minutes/mile)") +
+  theme(title = element_text(size = 14),
+        axis.text = element_text(size = 12)) +
+  geom_smooth(methd = "loess", se = FALSE, color = "slategray3", size = 2) +
+  ylim(16,5) +
+  ggtitle("Pace vs. Date")
+```
+
+- make box plots of pace for each day of the week using the `group` argument in the `mapping` aesthetic.
+- label the plot and make it look nice!
+
+Example code:
+
+```{r fig_pace_dow}
+library(ggplot2)
+library(LaCroixColoR)
+
+ggplot(run_desc, aes(x = dow, y = pace_mins, color = dow, group = dow)) +
+  geom_boxplot() +
+  scale_color_manual(values = lacroix_palette("PassionFruit", n = 7, type = "continuous")) +
+  theme_bw() +
+  xlab("") + ylab("pace (minutes/mile)") +
+  theme(title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.position = "none") +
+  ylim(16,4) +
+  ggtitle("Pace vs. Day of week")
+```
+
+* The box plot indicates that pace tends to be slower on Saturdays.
+
+- Use the `pairs()` function to make a scatter plot matrix between variables of interest
+- Would day of week be a useful variable to add to the model?
+
+Example code:
+
+```{r fig_pairs_scatter}
+pairs(run_desc %>% select(pace_mins, distance, gain, t_mean, e_max, month, dow))
+```
+
+---
+
 - use the (http://mfp.imbi.uni-freiburg.de)[mfp] library to identify the best model to predict duration
-- the first argument the `mfp` function requires in a `formula` object. The formula should contain all the candidate variables.
+- the first argument the `mfp` function requires is a `formula` object. The formula should contain all the candidate variables.
 - take a look at the website link above to get an idea what the `mfp` function does.
 
 Example formula :
